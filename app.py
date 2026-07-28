@@ -5,7 +5,18 @@ import requests
 from bs4 import BeautifulSoup
 import data_helper
 
+# 1. Cấu hình giao diện & CSS Ẩn Header/Footer/Menu (Theo yêu cầu 1)
 st.set_page_config(page_title="POS Bán Hàng Thuốc Lá", layout="centered")
+
+hide_streamlit_style = """
+            <style>
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            header {visibility: hidden;}
+            </style>
+            """
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+
 data_helper.init_db()
 
 # Hàm định dạng dấu chấm phân cách hàng ngàn chuẩn Việt Nam
@@ -34,7 +45,6 @@ def tra_cuu_mst_toi_uu(mst):
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
     }
 
-    # 1. Tra cứu qua VietQR API
     try:
         url_vietqr = f"https://api.vietqr.io/v2/business/{mst}"
         r_vqr = requests.get(url_vietqr, headers=headers, timeout=5)
@@ -49,7 +59,6 @@ def tra_cuu_mst_toi_uu(mst):
     except Exception:
         pass
 
-    # 2. Scrape qua masothue.com
     try:
         url_scrape = f"https://masothue.com/{mst}/"
         res = requests.get(url_scrape, headers=headers, timeout=5)
@@ -77,7 +86,6 @@ def tra_cuu_mst_toi_uu(mst):
     except Exception:
         pass
 
-    # 3. Scrape qua thongtincongty.vn
     try:
         url_ttct = f"https://www.thongtincongty.vn/search/{mst}/"
         res = requests.get(url_ttct, headers=headers, timeout=5)
@@ -101,7 +109,6 @@ def tra_cuu_mst_toi_uu(mst):
     except Exception:
         pass
 
-    # 4. Scrape qua thuvienphapluat.vn
     try:
         url_tvpl = f"https://thuvienphapluat.vn/ma-so-thue/{mst}.html"
         res = requests.get(url_tvpl, headers=headers, timeout=5)
@@ -171,7 +178,7 @@ if "admin_unlocked" not in st.session_state: st.session_state["admin_unlocked"] 
 if "is_nv_logged_in" not in st.session_state: st.session_state["is_nv_logged_in"] = False
 if "logged_nv_info" not in st.session_state: st.session_state["logged_nv_info"] = {}
 
-# ==================== KHÔI PHỤC PHIÊN ĐĂNG NHẬP CHỐNG REFRESH TRANG (CỐ ĐỊNH NHÂN VIÊN) ====================
+# Khôi phục phiên làm việc
 query_params = st.query_params
 if not st.session_state["is_nv_logged_in"] and "nv_id" in query_params:
     logged_id = query_params["nv_id"]
@@ -253,9 +260,7 @@ tab_pos, tab_baocao, tab_misa, tab_admin = st.tabs([
 # ==================== TAB 1: LẬP ĐƠN HÀNG ====================
 with tab_pos:
     st.subheader("1. Xác thực & Chọn Nhân viên")
-    
     ds_chi_nhanh = list(set(["Đà Lạt", "Đức Trọng"] + (df_nv['chi_nhanh'].dropna().unique().tolist() if not df_nv.empty else [])))
-    
     is_logged = st.session_state["is_nv_logged_in"]
 
     if not is_logged:
@@ -270,8 +275,7 @@ with tab_pos:
             df_nv_filtered = pd.DataFrame()
             ds_nv = []
 
-        if not ds_nv:
-            ds_nv = ["Chưa có nhân viên"]
+        if not ds_nv: ds_nv = ["Chưa có nhân viên"]
 
         with col_nv:
             ten_nv_chon = st.selectbox("Nhân viên bán hàng:", options=ds_nv, key="sb_nhan_vien")
@@ -280,8 +284,7 @@ with tab_pos:
         with col_pin:
             pin_input = st.text_input("🔑 Nhập Mã PIN:", type="password", key="input_nv_pin")
         with col_btn_login:
-            st.write("")
-            st.write("")
+            st.write(""); st.write("")
             if st.button("🔓 Đăng nhập phiên", use_container_width=True, type="primary"):
                 if not df_nv_filtered.empty and ten_nv_chon in df_nv_filtered['ten_nv'].values:
                     row_nv = df_nv_filtered[df_nv_filtered['ten_nv'] == ten_nv_chon].iloc[0]
@@ -296,7 +299,6 @@ with tab_pos:
                             "chi_nhanh": chi_nhanh_chon,
                             "nha_may": row_nv.get('nha_may', 'Tất cả')
                         }
-                        # Lưu phiên làm việc lên URL chống Refresh bị mất nhân viên
                         st.query_params["nv_id"] = ma_nv_log
                         st.success(f"Xin chào {ten_nv_chon}, phiên bán hàng đã được KHÓA!")
                         st.rerun()
@@ -306,7 +308,6 @@ with tab_pos:
                     st.warning("Vui lòng chọn nhân viên hợp lệ!")
 
         st.warning("⚠️ Vui lòng chọn đúng tên và nhập mã PIN để KHÓA thông tin bán hàng tránh sai báo cáo.")
-
     else:
         info = st.session_state["logged_nv_info"]
         chi_nhanh_chon = info["chi_nhanh"]
@@ -332,7 +333,6 @@ with tab_pos:
 
     st.divider()
     st.subheader("2. Thông tin Khách hàng")
-    
     tab_kh1, tab_kh2 = st.tabs(["📋 Chọn Khách Có Sẵn", "➕ Nhập Khách Mới"])
     
     ten_kh_selected = ""
@@ -370,17 +370,14 @@ with tab_pos:
                 mst_selected = ""
         else:
             st.info("Chưa có danh sách khách cũ.")
-            ten_kh_selected = ""
-            ten_nguoi_mua_selected = ""
-            dia_chi_selected = ""
+            ten_kh_selected = ""; ten_nguoi_mua_selected = ""; dia_chi_selected = ""
 
     with tab_kh2:
         col_mst1, col_mst2 = st.columns([3, 1])
         with col_mst1:
             mst_input = st.text_input("Mã Số Thuế:", key="txt_mst_moi")
         with col_mst2:
-            st.write("")
-            st.write("")
+            st.write(""); st.write("")
             btn_tracuu = st.button("🔍 Tra cứu", key="btn_tracuu_mst", use_container_width=True)
 
         if btn_tracuu:
@@ -402,13 +399,11 @@ with tab_pos:
         dia_chi_moi = st.text_input("Địa chỉ:", key="txt_dia_chi_moi")
 
         st.button("💾 Lưu Khách Mới Này", key="btn_luu_kh_moi", type="primary", use_container_width=True, on_click=cb_luu_khach_moi)
-
         if "msg_kh_success" in st.session_state:
             st.success(st.session_state.pop("msg_kh_success"))
 
     st.divider()
     st.subheader("3. Chọn Thuốc lá & Thêm vào đơn hàng")
-
     nha_may_filter = nha_may_nv if is_logged else "Tất cả"
 
     if not df_vt.empty:
@@ -440,7 +435,6 @@ with tab_pos:
                 else:
                     sl_val = int(so_luong_nhap)
                     dg_val = float(don_gia_nhap)
-                    
                     st.session_state["gio_hang"].append({
                         'ma_vt': ma_vt_selected,
                         'ten_vt': ten_vt_selected,
@@ -456,7 +450,6 @@ with tab_pos:
             st.warning(f"Không có mặt hàng nào thuộc nhà máy {nha_may_filter}!")
 
     st.markdown("### 🛒 Danh sách mặt hàng đã chọn:")
-    
     if st.session_state["gio_hang"]:
         df_cart = pd.DataFrame(st.session_state["gio_hang"])
         if 'xoa' not in df_cart.columns: df_cart['xoa'] = False
@@ -484,7 +477,6 @@ with tab_pos:
         for idx, row in edited_cart.iterrows():
             if not row['xoa']:
                 orig_item = st.session_state["gio_hang"][idx]
-                
                 new_ten_vt = row['ten_vt']
                 if new_ten_vt != orig_item.get('ten_vt') and new_ten_vt in map_vt_nv:
                     has_changed = True
@@ -532,7 +524,6 @@ with tab_pos:
         loai_tt = st.radio("Chọn phương thức thanh toán:", ["Tiền mặt", "Chuyển khoản", "Ghi nợ", "Kết hợp (TM / CK / Nợ)"], horizontal=True, key="rad_hinh_thuc_tt")
 
         tien_tm = 0.0; tien_ck = 0.0; tien_no = 0.0; ht_tt_final = "Tiền mặt"
-
         if loai_tt == "Tiền mặt": tien_tm = tong_tien_don; ht_tt_final = "Tiền mặt"
         elif loai_tt == "Chuyển khoản": tien_ck = tong_tien_don; ht_tt_final = "Chuyển khoản"
         elif loai_tt == "Ghi nợ": tien_no = tong_tien_don; ht_tt_final = "Ghi nợ"
@@ -581,7 +572,7 @@ with tab_pos:
     else:
         st.info("Giỏ hàng đang trống. Hãy chọn loại thuốc và bấm nút 'Thêm vào đơn hàng'.")
 
-# ==================== TAB 2: BÁO CÁO & QUẢN LÝ ĐƠN HÀNG (ĐÃ PHÂN QUYỀN ADMIN & NHÂN VIÊN) ====================
+# ==================== TAB 2: BÁO CÁO & QUẢN LÝ ĐƠN HÀNG (ĐÃ SỬA CỘT ĐƠN GIÁ CHO ADMIN) ====================
 with tab_baocao:
     st.subheader("📊 Báo cáo & Quản lý đơn hàng trong ngày")
     
@@ -594,7 +585,6 @@ with tab_baocao:
         
     ds_nv_bc = df_nv['ten_nv'].dropna().unique().tolist() if not df_nv.empty else []
 
-    # Xử lý Phân quyền xem báo cáo
     if is_admin:
         with col_bc2:
             cn_bc = st.selectbox("Chi nhánh xem:", options=["Tất cả"] + ds_chi_nhanh, key="sb_cn_bc")
@@ -649,10 +639,8 @@ with tab_baocao:
             with st.expander(f"📄 **Danh sách {len(df_don_hang)} đơn phát sinh trong ngày (Bấm để xem/xóa)**", expanded=False):
                 for idx, row in df_don_hang.iterrows():
                     so_don = row['so_don_hang']
-                    
                     kh_str = str(row['ten_kh']).strip() if pd.notna(row['ten_kh']) else ""
                     nm_str = str(row['ten_nguoi_mua']).strip() if pd.notna(row['ten_nguoi_mua']) else ""
-                    
                     ten_kh_display = kh_str if (kh_str and kh_str.lower() != "****") else (nm_str if nm_str else "Khách lẻ")
 
                     if is_admin:
@@ -668,7 +656,6 @@ with tab_baocao:
                             st.session_state["selected_don_hang"] = so_don
                             st.rerun()
 
-                    # CHỈ TÀI KHOẢN ADMIN MỚI ĐƯỢC XÓA ĐƠN HÀNG
                     if is_admin:
                         with c_del:
                             if st.button("🗑️ Xóa", key=f"btn_del_{so_don}"):
@@ -716,29 +703,59 @@ with tab_baocao:
                 st.markdown("### 📦 Thống kê tổng sản lượng xuất bán trong ngày:")
                 df_display = df_bc
 
-            df_group = df_display.groupby('ten_vt').agg(
-                Tong_So_Luong=('so_luong', 'sum'),
-                Tong_Thanh_Tien=('thanh_tien', 'sum')
-            ).reset_index()
+            # ================= YÊU CẦU 2: HIỂN THỊ CỘT ĐƠN GIÁ CHO ADMIN SỬA =================
+            if is_admin:
+                st.write("🔓 **Chế độ Admin (Code 9999): Cho phép chỉnh sửa Đơn giá trực tiếp**")
+                df_group = df_display.groupby('ten_vt').agg(
+                    Tong_So_Luong=('so_luong', 'sum'),
+                    Don_Gia=('don_gia', 'first'),
+                    Tong_Thanh_Tien=('thanh_tien', 'sum')
+                ).reset_index()
 
-            sum_sl = df_group['Tong_So_Luong'].sum()
-            sum_tt = df_group['Tong_Thanh_Tien'].sum()
+                edited_df_group = st.data_editor(
+                    df_group,
+                    column_config={
+                        "ten_vt": st.column_config.TextColumn("Tên mặt hàng", disabled=True),
+                        "Tong_So_Luong": st.column_config.NumberColumn("Tổng số lượng xuất", disabled=True),
+                        "Don_Gia": st.column_config.NumberColumn("Đơn Giá (Chỉnh sửa)", min_value=0, step=1000, format="%.0f"),
+                        "Tong_Thanh_Tien": st.column_config.NumberColumn("Tổng thành tiền", disabled=True)
+                    },
+                    use_container_width=True,
+                    hide_index=True,
+                    key="admin_editor_baocao"
+                )
+                
+                # Tính toán lại Thành tiền theo đơn giá mới nếu admin sửa
+                edited_df_group['Tong_Thanh_Tien'] = edited_df_group['Tong_So_Luong'] * edited_df_group['Don_Gia']
+                sum_sl = edited_df_group['Tong_So_Luong'].sum()
+                sum_tt = edited_df_group['Tong_Thanh_Tien'].sum()
 
-            df_group['Tong_So_Luong'] = df_group['Tong_So_Luong'].apply(lambda x: f"{int(x):,}".replace(",", "."))
-            df_group['Tong_Thanh_Tien'] = df_group['Tong_Thanh_Tien'].apply(format_vnd)
-            df_group.columns = ['Tên mặt hàng', 'Tổng số lượng xuất', 'Tổng thành tiền']
-            
-            df_group.index = range(1, len(df_group) + 1)
-            df_group.index.name = "STT"
+                st.markdown(f"**Tổng sản lượng:** {sum_sl:,.0f} | **Tổng doanh thu sau điều chỉnh:** :red[{format_vnd(sum_tt)} VNĐ]")
+            else:
+                # Giao diện xem bình thường dành cho Nhân viên
+                df_group = df_display.groupby('ten_vt').agg(
+                    Tong_So_Luong=('so_luong', 'sum'),
+                    Tong_Thanh_Tien=('thanh_tien', 'sum')
+                ).reset_index()
 
-            df_sum_row = pd.DataFrame({
-                'Tên mặt hàng': ['🔴 TỔNG CỘNG'],
-                'Tổng số lượng xuất': [f"{int(sum_sl):,}".replace(",", ".")],
-                'Tổng thành tiền': [format_vnd(sum_tt)]
-            }, index=['TỔNG'])
+                sum_sl = df_group['Tong_So_Luong'].sum()
+                sum_tt = df_group['Tong_Thanh_Tien'].sum()
 
-            df_final_show = pd.concat([df_group, df_sum_row])
-            st.dataframe(df_final_show, use_container_width=True)
+                df_group['Tong_So_Luong'] = df_group['Tong_So_Luong'].apply(lambda x: f"{int(x):,}".replace(",", "."))
+                df_group['Tong_Thanh_Tien'] = df_group['Tong_Thanh_Tien'].apply(format_vnd)
+                df_group.columns = ['Tên mặt hàng', 'Tổng số lượng xuất', 'Tổng thành tiền']
+                
+                df_group.index = range(1, len(df_group) + 1)
+                df_group.index.name = "STT"
+
+                df_sum_row = pd.DataFrame({
+                    'Tên mặt hàng': ['🔴 TỔNG CỘNG'],
+                    'Tổng số lượng xuất': [f"{int(sum_sl):,}".replace(",", ".")],
+                    'Tổng thành tiền': [format_vnd(sum_tt)]
+                }, index=['TỔNG'])
+
+                df_final_show = pd.concat([df_group, df_sum_row])
+                st.dataframe(df_final_show, use_container_width=True)
 
         else:
             st.warning("Chưa có đơn hàng nào phát sinh trong ngày được chọn!")
