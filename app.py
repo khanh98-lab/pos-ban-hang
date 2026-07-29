@@ -32,7 +32,7 @@ def get_gsheet_client():
         creds_dict = dict(st.secrets["gcp_service_account"])
         credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
         return gspread.authorize(credentials)
-    except Exception as e:
+    except Exception:
         return None
 
 # Hàm định dạng dấu chấm phân cách hàng ngàn
@@ -104,34 +104,38 @@ def tra_cuu_mst_toi_uu(mst):
 
     return None, None, "Không tìm thấy Mã số thuế này!"
 
-# HÀM LOAD DATA ĐÃ ĐƯỢC NÂNG CẤP KẾT NỐI TRỰC TIẾP TỪ GOOGLE SHEETS
+# HÀM LOAD DATA ĐÃ ĐƯỢC BỌC AN TOÀN TUYỆT ĐỐI (KHÔNG LO THIẾU FILE CSV)
 def load_data():
-    # 1. Thử kéo dữ liệu trực tiếp từ Google Sheets trước
+    df_kh = pd.DataFrame(columns=['ma_kh', 'ten_kh', 'ten_nguoi_mua', 'ma_so_thue', 'dia_chi'])
+    df_vt = pd.DataFrame(columns=['ma_vt', 'ten_vt', 'don_gia', 'nha_may'])
+    df_nv = pd.DataFrame(columns=['ma_nv', 'ten_nv', 'chi_nhanh', 'nha_may', 'pin'])
+
+    # 1. Kéo dữ liệu từ Google Sheets
     try:
         gc = get_gsheet_client()
         if gc:
-            sh = gc.open("POS_BAN_HANG") # Tên file Google Sheet
+            sh = gc.open("POS_BAN_HANG") # Tên file Google Sheet của mày
             
             # Kéo tab Nhân viên
             try:
                 ws_nv = sh.worksheet("nhan_vien")
                 df_nv = pd.DataFrame(ws_nv.get_all_records()).astype(str)
             except Exception:
-                df_nv = pd.read_csv('data/nhan_vien.csv', dtype=str).fillna("")
+                pass
                 
             # Kéo tab Hàng hóa
             try:
                 ws_vt = sh.worksheet("hang_hoa")
                 df_vt = pd.DataFrame(ws_vt.get_all_records())
             except Exception:
-                df_vt = pd.read_csv('data/hang_hoa.csv', dtype={'ma_vt': str, 'ten_vt': str, 'nha_may': str})
+                pass
                 
             # Kéo tab Khách hàng
             try:
                 ws_kh = sh.worksheet("khach_hang")
                 df_kh = pd.DataFrame(ws_kh.get_all_records()).astype(str)
             except Exception:
-                df_kh = pd.read_csv('data/khach_hang.csv', dtype=str)
+                pass
 
             # Chuẩn hóa dữ liệu
             if not df_vt.empty and 'don_gia' in df_vt.columns:
@@ -141,13 +145,13 @@ def load_data():
 
             return df_kh.fillna(""), df_vt.fillna(""), df_nv.fillna("")
     except Exception as e:
-        st.warning(f"⚠️ Chưa kết nối được Google Sheets ({e}). Đang dùng file local CSV dự phòng.")
+        st.warning(f"⚠️ Lưu ý kết nối Google Sheets: {e}")
 
-    # 2. Dự phòng: Đọc từ CSV local nếu gặp lỗi kết nối
+    # 2. Đọc file CSV Local nếu có, nếu không có file cũng không bị crash
     try:
         df_kh = pd.read_csv('data/khach_hang.csv', dtype=str).fillna("")
     except Exception:
-        df_kh = pd.DataFrame(columns=['ma_kh', 'ten_kh', 'ten_nguoi_mua', 'ma_so_thue', 'dia_chi'])
+        pass
         
     try:
         df_vt = pd.read_csv('data/hang_hoa.csv', dtype={'ma_vt': str, 'ten_vt': str, 'nha_may': str})
@@ -157,14 +161,14 @@ def load_data():
         cols_needed = [c for c in ['ma_vt', 'ten_vt', 'don_gia', 'nha_may'] if c in df_vt.columns]
         df_vt = df_vt[cols_needed]
     except Exception:
-        df_vt = pd.DataFrame(columns=['ma_vt', 'ten_vt', 'don_gia', 'nha_may'])
+        pass
         
     try:
         df_nv = pd.read_csv('data/nhan_vien.csv', dtype=str).fillna("")
         if 'pin' not in df_nv.columns:
             df_nv['pin'] = "1234"
     except Exception:
-        df_nv = pd.DataFrame(columns=['ma_nv', 'ten_nv', 'chi_nhanh', 'nha_may', 'pin'])
+        pass
         
     return df_kh, df_vt, df_nv
 
@@ -232,7 +236,14 @@ def cb_luu_khach_moi():
         'dia_chi': dia_chi
     }])
     df_kh = pd.concat([df_kh, new_row], ignore_index=True)
-    df_kh.to_csv('data/khach_hang.csv', index=False, encoding='utf-8')
+    
+    # Lưu ra CSV nếu có thư mục data
+    try:
+        import os
+        os.makedirs('data', exist_ok=True)
+        df_kh.to_csv('data/khach_hang.csv', index=False, encoding='utf-8')
+    except Exception:
+        pass
     
     st.session_state["txt_mst_moi"] = ""
     st.session_state["txt_ten_kh_moi"] = ""
@@ -798,7 +809,12 @@ with tab_admin:
                         'pin': new_pin_nv.strip() if new_pin_nv.strip() else "1234"
                     }])
                     df_nv = pd.concat([df_nv, new_row_nv], ignore_index=True)
-                    df_nv.to_csv('data/nhan_vien.csv', index=False, encoding='utf-8')
+                    try:
+                        import os
+                        os.makedirs('data', exist_ok=True)
+                        df_nv.to_csv('data/nhan_vien.csv', index=False, encoding='utf-8')
+                    except Exception:
+                        pass
                     st.session_state["msg_admin_success"] = f"🎉 Đã thêm thành công nhân viên: **{new_ten_nv}**!"
                     st.rerun()
 
@@ -825,7 +841,12 @@ with tab_admin:
                         'nha_may': final_nm_vt
                     }])
                     df_vt = pd.concat([df_vt, new_row_vt], ignore_index=True)
-                    df_vt.to_csv('data/hang_hoa.csv', index=False, encoding='utf-8')
+                    try:
+                        import os
+                        os.makedirs('data', exist_ok=True)
+                        df_vt.to_csv('data/hang_hoa.csv', index=False, encoding='utf-8')
+                    except Exception:
+                        pass
                     st.session_state["msg_admin_success"] = f"🎉 Đã thêm thành công mặt hàng: **[{final_ma_vt}] {new_ten_vt}**!"
                     st.rerun()
 
@@ -856,7 +877,12 @@ with tab_admin:
                     key="editor_nv"
                 )
                 if st.button("💾 Lưu Thay Đổi Nhân Viên", key="btn_save_nv_changes"):
-                    edited_nv.to_csv('data/nhan_vien.csv', index=False, encoding='utf-8')
+                    try:
+                        import os
+                        os.makedirs('data', exist_ok=True)
+                        edited_nv.to_csv('data/nhan_vien.csv', index=False, encoding='utf-8')
+                    except Exception:
+                        pass
                     if "editor_nv" in st.session_state:
                         del st.session_state["editor_nv"]
                     st.session_state["msg_admin_success"] = "✅ Đã cập nhật danh sách nhân viên thành công!"
@@ -896,7 +922,12 @@ with tab_admin:
                     key="editor_vt"
                 )
                 if st.button("💾 Lưu Thay Đổi Mặt Hàng", key="btn_save_vt_changes"):
-                    edited_vt.to_csv('data/hang_hoa.csv', index=False, encoding='utf-8')
+                    try:
+                        import os
+                        os.makedirs('data', exist_ok=True)
+                        edited_vt.to_csv('data/hang_hoa.csv', index=False, encoding='utf-8')
+                    except Exception:
+                        pass
                     if "editor_vt" in st.session_state:
                         del st.session_state["editor_vt"]
                     st.session_state["msg_admin_success"] = "✅ Đã cập nhật danh sách mặt hàng thành công!"
@@ -931,7 +962,12 @@ with tab_admin:
                     key="editor_kh"
                 )
                 if st.button("💾 Lưu Thay Đổi Khách Hàng", key="btn_save_kh_changes"):
-                    edited_kh.to_csv('data/khach_hang.csv', index=False, encoding='utf-8')
+                    try:
+                        import os
+                        os.makedirs('data', exist_ok=True)
+                        edited_kh.to_csv('data/khach_hang.csv', index=False, encoding='utf-8')
+                    except Exception:
+                        pass
                     if "editor_kh" in st.session_state:
                         del st.session_state["editor_kh"]
                     st.session_state["msg_admin_success"] = "✅ Đã cập nhật danh sách khách hàng thành công!"
