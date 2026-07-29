@@ -22,7 +22,7 @@ st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
 data_helper.init_db()
 
-# Hàm kết nối Google Sheets bảo mật từ Streamlit Secrets (Đã cập nhật chuẩn google-auth mới)
+# Hàm kết nối Google Sheets bảo mật từ Streamlit Secrets
 def get_gsheet_client():
     try:
         scopes = [
@@ -104,7 +104,46 @@ def tra_cuu_mst_toi_uu(mst):
 
     return None, None, "Không tìm thấy Mã số thuế này!"
 
+# HÀM LOAD DATA ĐÃ ĐƯỢC NÂNG CẤP KẾT NỐI TRỰC TIẾP TỪ GOOGLE SHEETS
 def load_data():
+    # 1. Thử kéo dữ liệu trực tiếp từ Google Sheets trước
+    try:
+        gc = get_gsheet_client()
+        if gc:
+            sh = gc.open("POS_BAN_HANG") # Tên file Google Sheet
+            
+            # Kéo tab Nhân viên
+            try:
+                ws_nv = sh.worksheet("nhan_vien")
+                df_nv = pd.DataFrame(ws_nv.get_all_records()).astype(str)
+            except Exception:
+                df_nv = pd.read_csv('data/nhan_vien.csv', dtype=str).fillna("")
+                
+            # Kéo tab Hàng hóa
+            try:
+                ws_vt = sh.worksheet("hang_hoa")
+                df_vt = pd.DataFrame(ws_vt.get_all_records())
+            except Exception:
+                df_vt = pd.read_csv('data/hang_hoa.csv', dtype={'ma_vt': str, 'ten_vt': str, 'nha_may': str})
+                
+            # Kéo tab Khách hàng
+            try:
+                ws_kh = sh.worksheet("khach_hang")
+                df_kh = pd.DataFrame(ws_kh.get_all_records()).astype(str)
+            except Exception:
+                df_kh = pd.read_csv('data/khach_hang.csv', dtype=str)
+
+            # Chuẩn hóa dữ liệu
+            if not df_vt.empty and 'don_gia' in df_vt.columns:
+                df_vt['don_gia'] = pd.to_numeric(df_vt['don_gia'], errors='coerce').fillna(0)
+            if not df_nv.empty and 'pin' not in df_nv.columns:
+                df_nv['pin'] = "1234"
+
+            return df_kh.fillna(""), df_vt.fillna(""), df_nv.fillna("")
+    except Exception as e:
+        st.warning(f"⚠️ Chưa kết nối được Google Sheets ({e}). Đang dùng file local CSV dự phòng.")
+
+    # 2. Dự phòng: Đọc từ CSV local nếu gặp lỗi kết nối
     try:
         df_kh = pd.read_csv('data/khach_hang.csv', dtype=str).fillna("")
     except Exception:
@@ -124,7 +163,6 @@ def load_data():
         df_nv = pd.read_csv('data/nhan_vien.csv', dtype=str).fillna("")
         if 'pin' not in df_nv.columns:
             df_nv['pin'] = "1234"
-            df_nv.to_csv('data/nhan_vien.csv', index=False, encoding='utf-8')
     except Exception:
         df_nv = pd.DataFrame(columns=['ma_nv', 'ten_nv', 'chi_nhanh', 'nha_may', 'pin'])
         
@@ -534,7 +572,6 @@ with tab_pos:
 with tab_baocao:
     st.subheader("📊 Báo cáo & Quản lý đơn hàng trong ngày")
     
-    # RÀNG BUỘC PHÂN QUYỀN NHÂN VIÊN/ADMIN TẠI TAB 2
     is_admin = st.session_state.get("admin_unlocked", False)
     is_nv_logged = st.session_state.get("is_nv_logged_in", False)
     logged_info = st.session_state.get("logged_nv_info", {})
@@ -653,13 +690,11 @@ with tab_baocao:
             df_display = df_selected
         else:
             st.session_state["selected_don_hang"] = None
-            st.markdown("### 📦 Thống kê tổng sản lượng xuất bán trong ngày (Chỉnh sửa trực tiếp SL & Đơn giá bên dưới):")
+            st.markdown("### 📦 Thống kê tổng sản lượng xuất bán trong ngày:")
             df_display = df_bc
 
-        # YÊU CẦU KẾ TOÁN: THÊM CỘT ĐƠN GIÁ, CHO PHÉP SỬA SL VÀ ĐƠN GIÁ, THÀNH TIỀN NHẢY TRỰC TIẾP
         df_edit_group = df_display.copy()
         
-        # Nếu đang xem tổng hợp nhiều đơn, nhóm theo sản phẩm và tính đơn giá trung bình / thực tế
         df_report = df_edit_group.groupby('ten_vt').agg(
             so_luong=('so_luong', 'sum'),
             don_gia=('don_gia', 'mean'),
@@ -683,7 +718,6 @@ with tab_baocao:
             key="report_data_editor"
         )
 
-        # Tính lại tổng thành tiền theo thời gian thực khi người dùng sửa trên data_editor
         edited_report_df['thanh_tien'] = edited_report_df['so_luong'] * edited_report_df['don_gia']
         
         sum_sl = edited_report_df['so_luong'].sum()
@@ -691,7 +725,6 @@ with tab_baocao:
 
         st.markdown(f"#### 🔴 **TỔNG CỘNG:** Số lượng: **{int(sum_sl):,}** | Thành tiền: :red[**{format_vnd(sum_tt)} VNĐ**]")
 
-        # Cập nhật thay đổi vào Cơ sở dữ liệu nếu có đơn cụ thể được chọn
         if selected_don and st.button("💾 Cập nhật số lượng & Đơn giá vào đơn hàng này", type="primary"):
             data_helper.cap_nhat_chi_tiet_don_hang(selected_don, edited_report_df)
             st.success(f"Đã cập nhật lại đơn hàng {selected_don} thành công!")
