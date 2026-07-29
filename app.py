@@ -809,29 +809,40 @@ with tab_baocao:
 
         df_report['so_luong'] = df_report['so_luong'].astype(float)
         df_report['don_gia'] = df_report['don_gia'].astype(float)
+
+        # ---------------- FIX LỖI TÍNH TOÁN REALTIME BẢNG DATA EDITOR ----------------
+        # 1. Đọc dữ liệu thô từ Streamlit State nếu Admin chỉnh sửa trên giao diện
+        if "report_data_editor" in st.session_state and "edited_rows" in st.session_state["report_data_editor"]:
+            edited_changes = st.session_state["report_data_editor"]["edited_rows"]
+            for idx, changes in edited_changes.items():
+                if idx < len(df_report):
+                    if "so_luong_show" in changes:
+                        df_report.at[idx, 'so_luong'] = parse_formatted_num(changes["so_luong_show"])
+                    if "don_gia_show" in changes:
+                        df_report.at[idx, 'don_gia'] = parse_formatted_num(changes["don_gia_show"])
+
+        # 2. Tính toán Thành tiền từng dòng & Tổng cộng Real-time
         df_report['thanh_tien'] = df_report['so_luong'] * df_report['don_gia']
 
-        # Chuyển dữ liệu sang định dạng hiển thị có dấu chấm
         df_report_show = df_report.copy()
         df_report_show['so_luong_show'] = df_report_show['so_luong'].apply(format_vnd)
         df_report_show['don_gia_show'] = df_report_show['don_gia'].apply(format_vnd)
         df_report_show['thanh_tien_show'] = df_report_show['thanh_tien'].apply(format_vnd)
 
-        # Tính tổng cộng
         sum_sl = df_report['so_luong'].sum()
         sum_tt = df_report['thanh_tien'].sum()
 
-        # Tạo hàng Tổng cộng để chèn vào bảng
+        # 3. Tạo hàng Tổng cộng (Đã bỏ chữ VNĐ)
         total_row = pd.DataFrame([{
             'ten_vt': '🔴 TỔNG CỘNG',
             'so_luong_show': format_vnd(sum_sl),
             'don_gia_show': '',
-            'thanh_tien_show': f"{format_vnd(sum_tt)} VNĐ"
+            'thanh_tien_show': format_vnd(sum_tt)
         }])
 
         df_table_final = pd.concat([df_report_show[['ten_vt', 'so_luong_show', 'don_gia_show', 'thanh_tien_show']], total_row], ignore_index=True)
 
-        # Kiểm tra quyền Admin (True: cho sửa, False: chỉ xem)
+        # Hiển thị data_editor
         edited_report_df = st.data_editor(
             df_table_final,
             column_config={
@@ -845,15 +856,10 @@ with tab_baocao:
             key="report_data_editor"
         )
 
-        # Xử lý tính toán lại nếu Admin sửa số liệu trên bảng
+        # Xử lý nút lưu khi Admin sửa số liệu
         if is_admin:
-            data_rows = edited_report_df[edited_report_df['ten_vt'] != '🔴 TỔNG CỘNG'].copy()
-            data_rows['so_luong'] = data_rows['so_luong_show'].apply(parse_formatted_num)
-            data_rows['don_gia'] = data_rows['don_gia_show'].apply(parse_formatted_num)
-            data_rows['thanh_tien'] = data_rows['so_luong'] * data_rows['don_gia']
-
             if selected_don and st.button("💾 Cập nhật số lượng & Đơn giá vào đơn hàng này", type="primary"):
-                df_to_save = data_rows[['ten_vt', 'so_luong', 'don_gia', 'thanh_tien']]
+                df_to_save = df_report[['ten_vt', 'so_luong', 'don_gia', 'thanh_tien']]
                 data_helper.cap_nhat_chi_tiet_don_hang(selected_don, df_to_save)
                 st.success(f"Đã cập nhật lại đơn hàng {selected_don} thành công!")
                 st.rerun()
