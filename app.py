@@ -4,7 +4,7 @@ from datetime import datetime
 import requests
 from bs4 import BeautifulSoup
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+from google.oauth2.service_account import Credentials
 import data_helper
 
 # 1. CẤU HÌNH TRANG & ẨN LOGO / MENU TRÁNH ĂN CẮP Ý TƯỞNG
@@ -22,13 +22,16 @@ st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
 data_helper.init_db()
 
-# Hàm kết nối Google Sheets bảo mật từ Streamlit Secrets
+# Hàm kết nối Google Sheets bảo mật từ Streamlit Secrets (Đã cập nhật chuẩn google-auth mới)
 def get_gsheet_client():
     try:
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        scopes = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive"
+        ]
         creds_dict = dict(st.secrets["gcp_service_account"])
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-        return gspread.authorize(creds)
+        credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+        return gspread.authorize(credentials)
     except Exception as e:
         return None
 
