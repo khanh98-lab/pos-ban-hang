@@ -52,6 +52,53 @@ def parse_formatted_num(val_str):
     except Exception:
         return 0.0
 
+# Hàm hỗ trợ ghi đơn hàng vào Google Sheet POS_BAN_HANG
+def append_don_hang_to_gsheet(chi_nhanh, ten_nv, ma_kh, ten_kh, ten_nguoi_mua, mst, dia_chi, danh_sach_hang, hinh_thuc_tt, xuat_hd, tien_tm, tien_ck, tien_no):
+    try:
+        gc = get_gsheet_client()
+        if gc:
+            sh = gc.open("POS_BAN_HANG")
+            try:
+                ws = sh.worksheet("DonHang")
+            except Exception:
+                ws = sh.get_worksheet(0)
+            
+            rows_to_append = []
+            now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            so_don = f"DH{datetime.now().strftime('%Y%m%d%H%M%S')}"
+            
+            for item in danh_sach_hang:
+                row = [
+                    so_don,
+                    now_str,
+                    chi_nhanh,
+                    ten_nv,
+                    ma_kh,
+                    ten_kh,
+                    ten_nguoi_mua,
+                    mst,
+                    dia_chi,
+                    item.get('ma_vt', ''),
+                    item.get('ten_vt', ''),
+                    item.get('nha_may', ''),
+                    item.get('so_luong', 0),
+                    item.get('don_gia', 0),
+                    item.get('thanh_tien', 0),
+                    hinh_thuc_tt,
+                    xuat_hd,
+                    tien_tm,
+                    tien_ck,
+                    tien_no
+                ]
+                rows_to_append.append(row)
+            
+            if rows_to_append:
+                ws.append_rows(rows_to_append)
+                return True
+    except Exception as e:
+        st.warning(f"⚠️ Không thể đồng bộ Google Sheets: {e}")
+    return False
+
 # TRA CỨU MÃ SỐ THUẾ (TỐI ƯU 3 NGUỒN)
 def tra_cuu_mst_toi_uu(mst):
     mst = str(mst).strip().replace(" ", "").replace("-", "")
@@ -112,13 +159,11 @@ def tra_cuu_mst_toi_uu(mst):
         if res_ttct.status_code == 200:
             soup_ttct = BeautifulSoup(res_ttct.text, 'html.parser')
             
-            # Lấy tên công ty
             ten_cty_ttct = ""
             h1_tag = soup_ttct.find('h1') or soup_ttct.find('h3')
             if h1_tag:
                 ten_cty_ttct = h1_tag.get_text(strip=True)
 
-            # Lấy địa chỉ
             dia_chi_ttct = ""
             for tr in soup_ttct.find_all(['tr', 'div', 'p']):
                 txt = tr.get_text()
@@ -149,21 +194,18 @@ def load_data():
         if gc:
             sh = gc.open("POS_BAN_HANG")
             
-            # Kéo tab NhanVien
             try:
                 ws_nv = sh.worksheet("NhanVien")
                 df_nv = pd.DataFrame(ws_nv.get_all_records()).astype(str)
             except Exception as e:
                 st.warning(f"⚠️ Không mở được tab 'NhanVien': {e}")
                 
-            # Kéo tab HangHoa
             try:
                 ws_vt = sh.worksheet("HangHoa")
                 df_vt = pd.DataFrame(ws_vt.get_all_records())
             except Exception as e:
                 st.warning(f"⚠️ Không mở được tab 'HangHoa': {e}")
                 
-            # Kéo tab KhachHang
             try:
                 ws_kh = sh.worksheet("KhachHang")
                 df_kh = pd.DataFrame(ws_kh.get_all_records()).astype(str)
@@ -269,7 +311,6 @@ def cb_luu_khach_moi():
     }])
     df_kh = pd.concat([df_kh, new_row], ignore_index=True)
     
-    # Lưu ra CSV nếu có thư mục data
     try:
         import os
         os.makedirs('data', exist_ok=True)
@@ -590,6 +631,7 @@ with tab_pos:
                 final_ten_kh = ten_kh_selected if ten_kh_selected else ""
                 final_ten_nguoi_mua = ten_nguoi_mua_selected
                 
+                # 1. Lưu SQLite / File Local qua helper
                 data_helper.luu_don_hang_danh_sach(
                     chi_nhanh=chi_nhanh_chon,
                     ten_nv=ten_nv_chon,
@@ -605,7 +647,29 @@ with tab_pos:
                     tien_ck=tien_ck,
                     tien_no=tien_no
                 )
-                st.success("🎉 ĐÃ LƯU ĐƠN HÀNG THÀNH CÔNG!")
+
+                # 2. Đẩy thẳng dữ liệu lên Google Trang Tính POS_BAN_HANG
+                gsheet_success = append_don_hang_to_gsheet(
+                    chi_nhanh=chi_nhanh_chon,
+                    ten_nv=ten_nv_chon,
+                    ma_kh=ma_kh_selected,
+                    ten_kh=final_ten_kh,
+                    ten_nguoi_mua=final_ten_nguoi_mua,
+                    mst=mst_selected,
+                    dia_chi=dia_chi_selected,
+                    danh_sach_hang=st.session_state["gio_hang"],
+                    hinh_thuc_tt=ht_tt_final,
+                    xuat_hd="Có" if xuat_hoa_don else "Không",
+                    tien_tm=tien_tm,
+                    tien_ck=tien_ck,
+                    tien_no=tien_no
+                )
+
+                if gsheet_success:
+                    st.success("🎉 ĐÃ LƯU ĐƠN HÀNG THÀNH CÔNG VÀ ĐÃ ĐẨY LÊN GOOGLE SHEETS!")
+                else:
+                    st.success("🎉 ĐÃ LƯU ĐƠN HÀNG VÀO CƠ SỞ DỮ LIỆU CỤC BỘ!")
+                    
                 st.session_state["gio_hang"] = []
                 st.rerun()
     else:
@@ -740,38 +804,59 @@ with tab_baocao:
         
         df_report = df_edit_group.groupby('ten_vt').agg(
             so_luong=('so_luong', 'sum'),
-            don_gia=('don_gia', 'mean'),
-            thanh_tien=('thanh_tien', 'sum')
+            don_gia=('don_gia', 'mean')
         ).reset_index()
 
         df_report['so_luong'] = df_report['so_luong'].astype(float)
         df_report['don_gia'] = df_report['don_gia'].astype(float)
         df_report['thanh_tien'] = df_report['so_luong'] * df_report['don_gia']
 
+        # Chuyển dữ liệu sang định dạng hiển thị có dấu chấm
+        df_report_show = df_report.copy()
+        df_report_show['so_luong_show'] = df_report_show['so_luong'].apply(format_vnd)
+        df_report_show['don_gia_show'] = df_report_show['don_gia'].apply(format_vnd)
+        df_report_show['thanh_tien_show'] = df_report_show['thanh_tien'].apply(format_vnd)
+
+        # Tính tổng cộng
+        sum_sl = df_report['so_luong'].sum()
+        sum_tt = df_report['thanh_tien'].sum()
+
+        # Tạo hàng Tổng cộng để chèn vào bảng
+        total_row = pd.DataFrame([{
+            'ten_vt': '🔴 TỔNG CỘNG',
+            'so_luong_show': format_vnd(sum_sl),
+            'don_gia_show': '',
+            'thanh_tien_show': f"{format_vnd(sum_tt)} VNĐ"
+        }])
+
+        df_table_final = pd.concat([df_report_show[['ten_vt', 'so_luong_show', 'don_gia_show', 'thanh_tien_show']], total_row], ignore_index=True)
+
+        # Kiểm tra quyền Admin (True: cho sửa, False: chỉ xem)
         edited_report_df = st.data_editor(
-            df_report,
+            df_table_final,
             column_config={
                 "ten_vt": st.column_config.TextColumn("Tên mặt hàng", disabled=True),
-                "so_luong": st.column_config.NumberColumn("Số lượng", min_value=0.0, step=1.0, format="%.0f", required=True),
-                "don_gia": st.column_config.NumberColumn("Đơn giá (VNĐ)", min_value=0.0, step=1000.0, format="%.0f", required=True),
-                "thanh_tien": st.column_config.NumberColumn("Thành tiền (VNĐ)", disabled=True, format="%.0f")
+                "so_luong_show": st.column_config.TextColumn("Số lượng", disabled=not is_admin),
+                "don_gia_show": st.column_config.TextColumn("Đơn giá (VNĐ)", disabled=not is_admin),
+                "thanh_tien_show": st.column_config.TextColumn("Thành tiền (VNĐ)", disabled=True)
             },
             use_container_width=True,
             hide_index=True,
             key="report_data_editor"
         )
 
-        edited_report_df['thanh_tien'] = edited_report_df['so_luong'] * edited_report_df['don_gia']
-        
-        sum_sl = edited_report_df['so_luong'].sum()
-        sum_tt = edited_report_df['thanh_tien'].sum()
+        # Xử lý tính toán lại nếu Admin sửa số liệu trên bảng
+        if is_admin:
+            data_rows = edited_report_df[edited_report_df['ten_vt'] != '🔴 TỔNG CỘNG'].copy()
+            data_rows['so_luong'] = data_rows['so_luong_show'].apply(parse_formatted_num)
+            data_rows['don_gia'] = data_rows['don_gia_show'].apply(parse_formatted_num)
+            data_rows['thanh_tien'] = data_rows['so_luong'] * data_rows['don_gia']
 
-        st.markdown(f"#### 🔴 **TỔNG CỘNG:** Số lượng: **{int(sum_sl):,}** | Thành tiền: :red[**{format_vnd(sum_tt)} VNĐ**]")
-
-        if selected_don and st.button("💾 Cập nhật số lượng & Đơn giá vào đơn hàng này", type="primary"):
-            data_helper.cap_nhat_chi_tiet_don_hang(selected_don, edited_report_df)
-            st.success(f"Đã cập nhật lại đơn hàng {selected_don} thành công!")
-            st.rerun()
+            if selected_don and st.button("💾 Cập nhật số lượng & Đơn giá vào đơn hàng này", type="primary"):
+                df_to_save = data_rows[['ten_vt', 'so_luong', 'don_gia', 'thanh_tien']]
+                data_helper.cap_nhat_chi_tiet_don_hang(selected_don, df_to_save)
+                st.success(f"Đã cập nhật lại đơn hàng {selected_don} thành công!")
+                st.rerun()
 
     else:
         st.warning("Chưa có đơn hàng nào phát sinh trong ngày được chọn!")
