@@ -115,7 +115,6 @@ def luu_don_hang_danh_sach(chi_nhanh, ten_nv, ma_kh, ten_kh, ten_nguoi_mua, mst,
     conn.commit()
     conn.close()
 
-    # Đồng bộ lên Google Sheets sheet DonHang
     append_to_gsheet("DonHang", gsheet_rows)
 
 def lay_bao_cao_ngay(ngay_str, chi_nhanh="Tất cả", ten_nv="Tất cả"):
