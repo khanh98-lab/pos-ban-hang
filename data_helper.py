@@ -2,14 +2,49 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 from streamlit_gsheets import GSheetsConnection
+import io
 
 def get_connection():
     return st.connection("gsheets", type=GSheetsConnection)
 
 def init_db():
-    pass # Google Sheets tự quản lý cấu trúc
+    pass
 
-# ================= 1. XỬ LÝ ĐƠN HÀNG =================
+# ================= 1. ĐỌC DỮ LIỆU TỪ GOOGLE SHEETS =================
+def load_all_sheets():
+    conn = get_connection()
+    
+    # Đọc Khách Hàng
+    try:
+        df_kh = conn.read(worksheet="KhachHang", ttl=0).fillna("")
+        df_kh = df_kh.astype(str)
+    except Exception:
+        df_kh = pd.DataFrame(columns=['ma_kh', 'ten_kh', 'ten_nguoi_mua', 'ma_so_thue', 'dia_chi'])
+
+    # Đọc Hàng Hóa
+    try:
+        df_vt = conn.read(worksheet="HangHoa", ttl=0)
+        if 'don_gia' in df_vt.columns:
+            df_vt['don_gia'] = pd.to_numeric(df_vt['don_gia'], errors='coerce').fillna(0)
+        df_vt = df_vt.fillna("")
+        for col in ['ma_vt', 'ten_vt', 'nha_may']:
+            if col in df_vt.columns:
+                df_vt[col] = df_vt[col].astype(str)
+    except Exception:
+        df_vt = pd.DataFrame(columns=['ma_vt', 'ten_vt', 'don_gia', 'nha_may'])
+
+    # Đọc Nhân Viên
+    try:
+        df_nv = conn.read(worksheet="NhanVien", ttl=0).fillna("")
+        df_nv = df_nv.astype(str)
+        if 'pin' not in df_nv.columns:
+            df_nv['pin'] = "1234"
+    except Exception:
+        df_nv = pd.DataFrame(columns=['ma_nv', 'ten_nv', 'chi_nhanh', 'nha_may', 'pin'])
+
+    return df_kh, df_vt, df_nv
+
+# ================= 2. QUẢN LÝ ĐƠN HÀNG =================
 def luu_don_hang_danh_sach(chi_nhanh, ten_nv, ma_kh, ten_kh, ten_nguoi_mua, mst, dia_chi, 
                            danh_sach_hang, hinh_thuc_tt, xuat_hd, tien_tm, tien_ck, tien_no):
     conn = get_connection()
@@ -84,11 +119,38 @@ def xoa_don_hang_by_so_don(so_don_hang):
     except Exception as e:
         st.error(f"Lỗi khi xóa đơn: {e}")
 
-# ================= 2. HÀM CẬP NHẬT CHUNG CHO CÁC TAB =================
+# ================= 3. CẬP NHẬT TAB TỪ ADMIN =================
 def update_sheet(worksheet_name, df_data):
     conn = get_connection()
     try:
         conn.update(worksheet=worksheet_name, data=df_data)
-        st.toast(f"Đã lưu dữ liệu lên Google Sheet tab '{worksheet_name}' thành công!", icon="✅")
+        st.toast(f"Đã cập nhật Google Sheet tab '{worksheet_name}'!", icon="✅")
     except Exception as e:
         st.error(f"Lỗi khi cập nhật tab {worksheet_name}: {e}")
+
+# ================= 4. XUẤT MISA EXCEL =================
+def xuat_excel_misa_chuan(ngay_str, chi_nhanh="Tất cả"):
+    df = lay_bao_cao_ngay(ngay_str, chi_nhanh)
+    if df.empty:
+        return None
+    
+    df_misa = pd.DataFrame({
+        'Số chứng từ': df['so_don_hang'],
+        'Ngày chứng từ': df['ngay_tao'],
+        'Mã khách hàng': df['ma_kh'],
+        'Tên khách hàng': df['ten_kh'],
+        'Mã số thuế': df['mst'],
+        'Địa chỉ': df['dia_chi'],
+        'Mã hàng': df['ma_vt'],
+        'Tên hàng': df['ten_vt'],
+        'Số lượng': df['so_luong'],
+        'Đơn giá': df['don_gia'],
+        'Thành tiền': df['thanh_tien'],
+        'Hình thức thanh toán': df['hinh_thuc_tt'],
+        'Xuất hóa đơn': df['xuat_hd']
+    })
+
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df_misa.to_excel(writer, index=False, sheet_name='Import_MISA')
+    return output.getvalue()
