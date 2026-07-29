@@ -5,31 +5,8 @@ from datetime import datetime
 import io
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
 
 DB_FILE = 'data/pos_database.db'
-SPREADSHEET_NAME = "POS_BAN_HANG"
-
-# Cấu hình Service Account Credentials
-CREDS_DICT = {
-  "type": "service_account",
-  "project_id": "gen-lang-client-0051225603",
-  "private_key_id": "491bd98941ae339dad31727b12fc15ea72665d1f",
-  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQDKeaMmoUV3xTg7\n+wy8Q6O0qZ0NrV0krymyYfoKvstr4Ec3hHZOhRHwAHkVFdb/ri6ih7BjRvWNxMKS\nqll6diGZIVfjCIkWZb2WiKHHNhjWUamyi/aixpIYBqGOt2HMolhH0cgHS5DERmV/\n8SPbLPqQ4oy0v2ps/XggRsgaU3qebVq42PEdwU+0G4RkMJbCXfbk/hktsNhajWCb\nAMn6IK2vBVd19RqfFTiBOq5PCssOQLmM4DZK8yumcHGmDPOkGYbogxE7YFrgu1Jb\nijpTKwTpbTbclClOgbCoRwUSVkZZ6W217IMiTd5GlUCY5u7NYBqHYlJW9RfCRJUh\nDm+vZWZvAgMBAAECggEAJMST8QbmM4q33ISJWoK57qvCXmJ2AJxiaQdLvbnJ/Ov8\nYsOGLFoT2M5tLnwJz+JUi6UyTcTsAHOTlcijeQ6MqV8Zs5uwMUYGeJiVMDTNq9Wm\niErMXeDLVNuXaPA6LUvp1hjtRw3c2xehhOtIRJvVYIwTWxtLe0FIGCxiWA2CvdPw\n2VwcstCZwvxL19O7s5/AF6ifphIDbZkd3ntOVyNZR8qgbQmSsgJ6+oT5MEa3RsIY\n8dCqpFvIZ6jmze7UdrrI6b5RbmoqoRp2nqRM+YuGSUbcDuKxkJE866uyWsOywI+m\n0gjBrQNnLVvkezr+0lf4MCkfoEg/epdlzj5uB8Cz6QKBgQD5CdvH3AJgW2My0mTx\npOFB0QwPNNtA0ja3Br7pwwuQhaHPFKlV4D87LTaP9/kyfPX++vBJ/opF2txshm0D\nwskXpRgrirhO08DErYigpq1vWeFD0+jD7hWFjYbhtfW09EXupfeaD+YpO07dCJsP\n7Kr09ezGP2hi6M4KAMTklyjdowKBgQDQIpE3/kgTTM1AmEeDqIBvT0HAWN2l0vgi\nSOw5QqP1RxNg+sEHlqZi7HbSA7Hnb/wzAsqMiChZTHbc5uMbUeV4F8noGuKpvZST\nos0DvzG4IgK0CMLKQbWYgqfqmv53tSJF1C/xOrx0pVVzLYew5uK8+tr5qMWQiu4H\nA7dDlr9IxQKBgQDDfUamM4E2DGbpPRj6Sxh75tKVmUNHNfy3Xbc9ntsUHqIvASQQ\nAlEAbfR3vQtD463i8y7ulr4KKcx/8GHg4uWiBvnbLDCTyEt42FP47/4S+7YF3XHJ\nY7pHNRqdUY3H9zxyIpwjtrlQwnqcraWzMW/djLLJyHpzshYS6hmk6zesCwKBgQC+\nKbcQt61WpOcrS3abngqqqHlkqkzowxafDI13y6FN6sCT7McMjeI7o9z0CRg0YqbE\nXJp/R6/F1w0Ky5FYVr0XunRpMpdBissDEM3LzJY6rChYIWEHtn2aeFW/DhnNeZt0\nvWeIOagR0zV9ZG4DfRBQpcoILOFFLQpJMmXwxPzEGQKBgQC/69lqfRNYot79krfz\n5fIje4BB1S9c8bh/GKteSUdhWsyPeQUsvkw9RyXdD3HGfFJBxM2GLCl8O+t4OyY3\nH47Yhk+d4RrQa5G5vJVo6m2kokpWn6GEWFMBNq8JZWPj0XAwzKNM2nMS66lkDgHG\nMbq76IE117dcRGwbZZHwy8h5uQ==\n-----END PRIVATE KEY-----\n",
-  "client_email": "streamlit-pos@gen-lang-client-0051225603.iam.gserviceaccount.com",
-  "client_id": "100138466096139844885",
-  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-  "token_uri": "https://oauth2.googleapis.com/token",
-  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/streamlit-pos%40gen-lang-client-0051225603.iam.gserviceaccount.com",
-  "universe_domain": "googleapis.com"
-}
-
-def get_gsheet_client():
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(CREDS_DICT, scope)
-    return gspread.authorize(creds)
 
 def init_db():
     os.makedirs('data', exist_ok=True)
@@ -63,15 +40,6 @@ def init_db():
     conn.commit()
     conn.close()
 
-def append_to_gsheet(sheet_name, rows_data):
-    try:
-        gc = get_gsheet_client()
-        sh = gc.open(SPREADSHEET_NAME)
-        worksheet = sh.worksheet(sheet_name)
-        worksheet.append_rows(rows_data)
-    except Exception as e:
-        print(f"Lỗi đồng bộ Google Sheets ({sheet_name}): {e}")
-
 def luu_don_hang_danh_sach(chi_nhanh, ten_nv, ma_kh, ten_kh, ten_nguoi_mua, mst, dia_chi, danh_sach_hang, hinh_thuc_tt, xuat_hd, tien_tm, tien_ck, tien_no):
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
@@ -85,15 +53,10 @@ def luu_don_hang_danh_sach(chi_nhanh, ten_nv, ma_kh, ten_kh, ten_nguoi_mua, mst,
     val_ten_nguoi_mua = str(ten_nguoi_mua).strip() if ten_nguoi_mua else ""
     final_ten_nguoi_mua = "" if val_ten_nguoi_mua.lower() == 'khách lẻ' else val_ten_nguoi_mua
 
-    gsheet_rows = []
-
     for item in danh_sach_hang:
         sl = float(item.get('so_luong', 0))
         dg = float(item.get('don_gia', 0))
         tt = float(item.get('thanh_tien', sl * dg))
-        nm = item.get('nha_may', '')
-        ma_vt = item.get('ma_vt', '')
-        ten_vt = item.get('ten_vt', '')
         
         cursor.execute('''
             INSERT INTO don_hang (
@@ -102,20 +65,12 @@ def luu_don_hang_danh_sach(chi_nhanh, ten_nv, ma_kh, ten_kh, ten_nguoi_mua, mst,
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             so_don, ngay_tao, chi_nhanh, ten_nv, ma_kh, final_ten_kh, final_ten_nguoi_mua, mst, dia_chi,
-            ma_vt, ten_vt, sl, dg, tt,
-            hinh_thuc_tt, xuat_hd, float(tien_tm), float(tien_ck), float(tien_no), nm
+            item.get('ma_vt', ''), item.get('ten_vt', ''), sl, dg, tt,
+            hinh_thuc_tt, xuat_hd, float(tien_tm), float(tien_ck), float(tien_no), item.get('nha_may', '')
         ))
-
-        gsheet_rows.append([
-            so_don, ngay_tao, chi_nhanh, ten_nv, ma_kh, final_ten_kh, final_ten_nguoi_mua,
-            mst, dia_chi, ma_vt, ten_vt, nm, sl, dg, tt, hinh_thuc_tt, xuat_hd,
-            float(tien_tm), float(tien_ck), float(tien_no)
-        ])
         
     conn.commit()
     conn.close()
-
-    append_to_gsheet("DonHang", gsheet_rows)
 
 def lay_bao_cao_ngay(ngay_str, chi_nhanh="Tất cả", ten_nv="Tất cả"):
     conn = sqlite3.connect(DB_FILE)
@@ -141,15 +96,22 @@ def xoa_don_hang_by_so_don(so_don_hang):
     conn.commit()
     conn.close()
 
-def cap_nhat_chi_tiet_don_hang(id_record, new_sl, new_dg):
+def cap_nhat_chi_tiet_don_hang(so_don_hang, df_edited):
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    new_tt = new_sl * new_dg
-    cursor.execute('''
-        UPDATE don_hang 
-        SET so_luong = ?, don_gia = ?, thanh_tien = ? 
-        WHERE id = ?
-    ''', (new_sl, new_dg, new_tt, id_record))
+    
+    for idx, row in df_edited.iterrows():
+        ten_vt = row['ten_vt']
+        sl = float(row['so_luong'])
+        dg = float(row['don_gia'])
+        tt = sl * dg
+        
+        cursor.execute('''
+            UPDATE don_hang 
+            SET so_luong = ?, don_gia = ?, thanh_tien = ?
+            WHERE so_don_hang = ? AND ten_vt = ?
+        ''', (sl, dg, tt, so_don_hang, ten_vt))
+        
     conn.commit()
     conn.close()
 
