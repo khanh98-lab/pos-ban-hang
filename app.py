@@ -32,7 +32,8 @@ def get_gsheet_client():
         creds_dict = dict(st.secrets["gcp_service_account"])
         credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
         return gspread.authorize(credentials)
-    except Exception:
+    except Exception as e:
+        st.error(f"❌ Lỗi đọc Streamlit Secrets: {e}")
         return None
 
 # Hàm định dạng dấu chấm phân cách hàng ngàn
@@ -104,7 +105,7 @@ def tra_cuu_mst_toi_uu(mst):
 
     return None, None, "Không tìm thấy Mã số thuế này!"
 
-# HÀM LOAD DATA ĐÃ ĐƯỢC BỌC AN TOÀN TUYỆT ĐỐI (KHÔNG LO THIẾU FILE CSV)
+# HÀM LOAD DATA ĐÃ SỬA CHUẨN TÊN TAB & HỖ TRỢ BÁO LỖI CHIA SẺ QUYỀN GOOGLE SHEET
 def load_data():
     df_kh = pd.DataFrame(columns=['ma_kh', 'ten_kh', 'ten_nguoi_mua', 'ma_so_thue', 'dia_chi'])
     df_vt = pd.DataFrame(columns=['ma_vt', 'ten_vt', 'don_gia', 'nha_may'])
@@ -116,26 +117,26 @@ def load_data():
         if gc:
             sh = gc.open("POS_BAN_HANG") # Tên file Google Sheet của mày
             
-            # Kéo tab Nhân viên
+            # Kéo tab NhanVien (Viết hoa, viết liền)
             try:
-                ws_nv = sh.worksheet("nhan_vien")
+                ws_nv = sh.worksheet("NhanVien")
                 df_nv = pd.DataFrame(ws_nv.get_all_records()).astype(str)
-            except Exception:
-                pass
+            except Exception as e:
+                st.warning(f"⚠️ Không mở được tab 'NhanVien': {e}")
                 
-            # Kéo tab Hàng hóa
+            # Kéo tab HangHoa (Viết hoa, viết liền)
             try:
-                ws_vt = sh.worksheet("hang_hoa")
+                ws_vt = sh.worksheet("HangHoa")
                 df_vt = pd.DataFrame(ws_vt.get_all_records())
-            except Exception:
-                pass
+            except Exception as e:
+                st.warning(f"⚠️ Không mở được tab 'HangHoa': {e}")
                 
-            # Kéo tab Khách hàng
+            # Kéo tab KhachHang (Viết hoa, viết liền)
             try:
-                ws_kh = sh.worksheet("khach_hang")
+                ws_kh = sh.worksheet("KhachHang")
                 df_kh = pd.DataFrame(ws_kh.get_all_records()).astype(str)
-            except Exception:
-                pass
+            except Exception as e:
+                st.warning(f"⚠️ Không mở được tab 'KhachHang': {e}")
 
             # Chuẩn hóa dữ liệu
             if not df_vt.empty and 'don_gia' in df_vt.columns:
@@ -145,9 +146,9 @@ def load_data():
 
             return df_kh.fillna(""), df_vt.fillna(""), df_nv.fillna("")
     except Exception as e:
-        st.warning(f"⚠️ Lưu ý kết nối Google Sheets: {e}")
+        st.error(f"❌ Kết nối Google Sheets thất bại: {e}. Vui lòng kiểm tra lại xem đã Share (Chia sẻ) file 'POS_BAN_HANG' cho email Service Account với quyền Editor chưa!")
 
-    # 2. Đọc file CSV Local nếu có, nếu không có file cũng không bị crash
+    # 2. Đọc file CSV Local dự phòng nếu không mở được Google Sheets
     try:
         df_kh = pd.read_csv('data/khach_hang.csv', dtype=str).fillna("")
     except Exception:
