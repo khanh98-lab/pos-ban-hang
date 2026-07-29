@@ -105,7 +105,8 @@ def tra_cuu_mst_toi_uu(mst):
 
     return None, None, "Không tìm thấy Mã số thuế này!"
 
-# HÀM LOAD DATA ĐÃ SỬA CHUẨN TÊN TAB & HỖ TRỢ BÁO LỖI CHIA SẺ QUYỀN GOOGLE SHEET
+# Bổ sung decorator lưu bộ nhớ đệm 10 phút (600 giây)
+@st.cache_data(ttl=600)
 def load_data():
     df_kh = pd.DataFrame(columns=['ma_kh', 'ten_kh', 'ten_nguoi_mua', 'ma_so_thue', 'dia_chi'])
     df_vt = pd.DataFrame(columns=['ma_vt', 'ten_vt', 'don_gia', 'nha_may'])
@@ -115,30 +116,29 @@ def load_data():
     try:
         gc = get_gsheet_client()
         if gc:
-            sh = gc.open("POS_BAN_HANG") # Tên file Google Sheet của mày
+            sh = gc.open("POS_BAN_HANG")
             
-            # Kéo tab NhanVien (Viết hoa, viết liền)
+            # Kéo tab NhanVien
             try:
                 ws_nv = sh.worksheet("NhanVien")
                 df_nv = pd.DataFrame(ws_nv.get_all_records()).astype(str)
             except Exception as e:
                 st.warning(f"⚠️ Không mở được tab 'NhanVien': {e}")
                 
-            # Kéo tab HangHoa (Viết hoa, viết liền)
+            # Kéo tab HangHoa
             try:
                 ws_vt = sh.worksheet("HangHoa")
                 df_vt = pd.DataFrame(ws_vt.get_all_records())
             except Exception as e:
                 st.warning(f"⚠️ Không mở được tab 'HangHoa': {e}")
                 
-            # Kéo tab KhachHang (Viết hoa, viết liền)
+            # Kéo tab KhachHang
             try:
                 ws_kh = sh.worksheet("KhachHang")
                 df_kh = pd.DataFrame(ws_kh.get_all_records()).astype(str)
             except Exception as e:
                 st.warning(f"⚠️ Không mở được tab 'KhachHang': {e}")
 
-            # Chuẩn hóa dữ liệu
             if not df_vt.empty and 'don_gia' in df_vt.columns:
                 df_vt['don_gia'] = pd.to_numeric(df_vt['don_gia'], errors='coerce').fillna(0)
             if not df_nv.empty and 'pin' not in df_nv.columns:
@@ -146,9 +146,9 @@ def load_data():
 
             return df_kh.fillna(""), df_vt.fillna(""), df_nv.fillna("")
     except Exception as e:
-        st.error(f"❌ Kết nối Google Sheets thất bại: {e}. Vui lòng kiểm tra lại xem đã Share (Chia sẻ) file 'POS_BAN_HANG' cho email Service Account với quyền Editor chưa!")
+        st.error(f"❌ Kết nối Google Sheets thất bại: {e}")
 
-    # 2. Đọc file CSV Local dự phòng nếu không mở được Google Sheets
+    # 2. Đọc file CSV Local dự phòng
     try:
         df_kh = pd.read_csv('data/khach_hang.csv', dtype=str).fillna("")
     except Exception:
