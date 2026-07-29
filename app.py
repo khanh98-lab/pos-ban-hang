@@ -1,13 +1,15 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+from streamlit_gsheets import GSheetsConnection
 import data_helper
 
 # Cấu hình trang
 st.set_page_config(page_title="Hệ Thống Bán Hàng POS", layout="wide", page_icon="📦")
 
-# Khởi tạo DB
-data_helper.init_db()
+# Khởi tạo kết nối Google Sheets trực tiếp trong app.py
+def get_gsheets_conn():
+    return st.connection("gsheets", type=GSheetsConnection)
 
 # Hàm format tiền VND
 def format_vnd(amount):
@@ -16,7 +18,7 @@ def format_vnd(amount):
 # Hàm đọc dữ liệu từ Google Sheets
 @st.cache_data(ttl=5)
 def load_data():
-    conn = data_helper.get_connection()
+    conn = get_gsheets_conn()
     
     # 1. Khách hàng
     try:
