@@ -3,5 +3,5 @@ pandas
 requests
 beautifulsoup4
 gspread
-oauth2client
+google-auth
 openpyxl
