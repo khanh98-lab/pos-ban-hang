@@ -1,156 +1,247 @@
-import streamlit as st
 import pandas as pd
+import sqlite3
+import os
 from datetime import datetime
-from streamlit_gsheets import GSheetsConnection
 import io
+import openpyxl
+from openpyxl.styles import Font, Alignment, PatternFill
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
-def get_connection():
-    return st.connection("gsheets", type=GSheetsConnection)
+DB_FILE = 'data/pos_database.db'
+SPREADSHEET_NAME = "POS_BAN_HANG"
+
+# Cấu hình Service Account Credentials
+CREDS_DICT = {
+  "type": "service_account",
+  "project_id": "gen-lang-client-0051225603",
+  "private_key_id": "491bd98941ae339dad31727b12fc15ea72665d1f",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQDKeaMmoUV3xTg7\n+wy8Q6O0qZ0NrV0krymyYfoKvstr4Ec3hHZOhRHwAHkVFdb/ri6ih7BjRvWNxMKS\nqll6diGZIVfjCIkWZb2WiKHHNhjWUamyi/aixpIYBqGOt2HMolhH0cgHS5DERmV/\n8SPbLPqQ4oy0v2ps/XggRsgaU3qebVq42PEdwU+0G4RkMJbCXfbk/hktsNhajWCb\nAMn6IK2vBVd19RqfFTiBOq5PCssOQLmM4DZK8yumcHGmDPOkGYbogxE7YFrgu1Jb\nijpTKwTpbTbclClOgbCoRwUSVkZZ6W217IMiTd5GlUCY5u7NYBqHYlJW9RfCRJUh\nDm+vZWZvAgMBAAECggEAJMST8QbmM4q33ISJWoK57qvCXmJ2AJxiaQdLvbnJ/Ov8\nYsOGLFoT2M5tLnwJz+JUi6UyTcTsAHOTlcijeQ6MqV8Zs5uwMUYGeJiVMDTNq9Wm\niErMXeDLVNuXaPA6LUvp1hjtRw3c2xehhOtIRJvVYIwTWxtLe0FIGCxiWA2CvdPw\n2VwcstCZwvxL19O7s5/AF6ifphIDbZkd3ntOVyNZR8qgbQmSsgJ6+oT5MEa3RsIY\n8dCqpFvIZ6jmze7UdrrI6b5RbmoqoRp2nqRM+YuGSUbcDuKxkJE866uyWsOywI+m\n0gjBrQNnLVvkezr+0lf4MCkfoEg/epdlzj5uB8Cz6QKBgQD5CdvH3AJgW2My0mTx\npOFB0QwPNNtA0ja3Br7pwwuQhaHPFKlV4D87LTaP9/kyfPX++vBJ/opF2txshm0D\nwskXpRgrirhO08DErYigpq1vWeFD0+jD7hWFjYbhtfW09EXupfeaD+YpO07dCJsP\n7Kr09ezGP2hi6M4KAMTklyjdowKBgQDQIpE3/kgTTM1AmEeDqIBvT0HAWN2l0vgi\nSOw5QqP1RxNg+sEHlqZi7HbSA7Hnb/wzAsqMiChZTHbc5uMbUeV4F8noGuKpvZST\nos0DvzG4IgK0CMLKQbWYgqfqmv53tSJF1C/xOrx0pVVzLYew5uK8+tr5qMWQiu4H\nA7dDlr9IxQKBgQDDfUamM4E2DGbpPRj6Sxh75tKVmUNHNfy3Xbc9ntsUHqIvASQQ\nAlEAbfR3vQtD463i8y7ulr4KKcx/8GHg4uWiBvnbLDCTyEt42FP47/4S+7YF3XHJ\nY7pHNRqdUY3H9zxyIpwjtrlQwnqcraWzMW/djLLJyHpzshYS6hmk6zesCwKBgQC+\nKbcQt61WpOcrS3abngqqqHlkqkzowxafDI13y6FN6sCT7McMjeI7o9z0CRg0YqbE\nXJp/R6/F1w0Ky5FYVr0XunRpMpdBissDEM3LzJY6rChYIWEHtn2aeFW/DhnNeZt0\nvWeIOagR0zV9ZG4DfRBQpcoILOFFLQpJMmXwxPzEGQKBgQC/69lqfRNYot79krfz\n5fIje4BB1S9c8bh/GKteSUdhWsyPeQUsvkw9RyXdD3HGfFJBxM2GLCl8O+t4OyY3\nH47Yhk+d4RrQa5G5vJVo6m2kokpWn6GEWFMBNq8JZWPj0XAwzKNM2nMS66lkDgHG\nMbq76IE117dcRGwbZZHwy8h5uQ==\n-----END PRIVATE KEY-----\n",
+  "client_email": "streamlit-pos@gen-lang-client-0051225603.iam.gserviceaccount.com",
+  "client_id": "100138466096139844885",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/streamlit-pos%40gen-lang-client-0051225603.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
+
+def get_gsheet_client():
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(CREDS_DICT, scope)
+    return gspread.authorize(creds)
 
 def init_db():
-    pass
+    os.makedirs('data', exist_ok=True)
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS don_hang (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            so_don_hang TEXT,
+            ngay_tao TEXT,
+            chi_nhanh TEXT,
+            ten_nv TEXT,
+            ma_kh TEXT,
+            ten_kh TEXT,
+            ten_nguoi_mua TEXT,
+            ma_so_thue TEXT,
+            dia_chi TEXT,
+            ma_vt TEXT,
+            ten_vt TEXT,
+            so_luong REAL,
+            don_gia REAL,
+            thanh_tien REAL,
+            hinh_thuc_tt TEXT,
+            xuat_hd TEXT,
+            tien_tm REAL,
+            tien_ck REAL,
+            tien_no REAL,
+            nha_may TEXT
+        )
+    ''')
+    conn.commit()
+    conn.close()
 
-# ================= 1. ĐỌC DỮ LIỆU TỪ GOOGLE SHEETS =================
-def load_all_sheets():
-    conn = get_connection()
+def append_to_gsheet(sheet_name, rows_data):
+    try:
+        gc = get_gsheet_client()
+        sh = gc.open(SPREADSHEET_NAME)
+        worksheet = sh.worksheet(sheet_name)
+        worksheet.append_rows(rows_data)
+    except Exception as e:
+        print(f"Lỗi đồng bộ Google Sheets ({sheet_name}): {e}")
+
+def luu_don_hang_danh_sach(chi_nhanh, ten_nv, ma_kh, ten_kh, ten_nguoi_mua, mst, dia_chi, danh_sach_hang, hinh_thuc_tt, xuat_hd, tien_tm, tien_ck, tien_no):
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
     
-    # Đọc Khách Hàng
-    try:
-        df_kh = conn.read(worksheet="KhachHang", ttl=0).fillna("")
-        df_kh = df_kh.astype(str)
-    except Exception:
-        df_kh = pd.DataFrame(columns=['ma_kh', 'ten_kh', 'ten_nguoi_mua', 'ma_so_thue', 'dia_chi'])
+    so_don = f"DH_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    ngay_tao = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-    # Đọc Hàng Hóa
-    try:
-        df_vt = conn.read(worksheet="HangHoa", ttl=0)
-        if 'don_gia' in df_vt.columns:
-            df_vt['don_gia'] = pd.to_numeric(df_vt['don_gia'], errors='coerce').fillna(0)
-        df_vt = df_vt.fillna("")
-        for col in ['ma_vt', 'ten_vt', 'nha_may']:
-            if col in df_vt.columns:
-                df_vt[col] = df_vt[col].astype(str)
-    except Exception:
-        df_vt = pd.DataFrame(columns=['ma_vt', 'ten_vt', 'don_gia', 'nha_may'])
+    val_ten_kh = str(ten_kh).strip() if ten_kh else ""
+    final_ten_kh = "" if val_ten_kh.lower() == 'khách lẻ' else val_ten_kh
 
-    # Đọc Nhân Viên
-    try:
-        df_nv = conn.read(worksheet="NhanVien", ttl=0).fillna("")
-        df_nv = df_nv.astype(str)
-        if 'pin' not in df_nv.columns:
-            df_nv['pin'] = "1234"
-    except Exception:
-        df_nv = pd.DataFrame(columns=['ma_nv', 'ten_nv', 'chi_nhanh', 'nha_may', 'pin'])
+    val_ten_nguoi_mua = str(ten_nguoi_mua).strip() if ten_nguoi_mua else ""
+    final_ten_nguoi_mua = "" if val_ten_nguoi_mua.lower() == 'khách lẻ' else val_ten_nguoi_mua
 
-    return df_kh, df_vt, df_nv
+    gsheet_rows = []
 
-# ================= 2. QUẢN LÝ ĐƠN HÀNG =================
-def luu_don_hang_danh_sach(chi_nhanh, ten_nv, ma_kh, ten_kh, ten_nguoi_mua, mst, dia_chi, 
-                           danh_sach_hang, hinh_thuc_tt, xuat_hd, tien_tm, tien_ck, tien_no):
-    conn = get_connection()
-    try:
-        df_existing = conn.read(worksheet="DonHang", ttl=0)
-    except Exception:
-        df_existing = pd.DataFrame()
-
-    so_don_hang = f"DH_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    ngay_tao = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    new_rows = []
     for item in danh_sach_hang:
-        new_rows.append({
-            'so_don_hang': so_don_hang,
-            'ngay_tao': ngay_tao,
-            'chi_nhanh': chi_nhanh,
-            'ten_nv': ten_nv,
-            'ma_kh': ma_kh,
-            'ten_kh': ten_kh,
-            'ten_nguoi_mua': ten_nguoi_mua,
-            'mst': mst,
-            'dia_chi': dia_chi,
-            'ma_vt': item['ma_vt'],
-            'ten_vt': item['ten_vt'],
-            'nha_may': item.get('nha_may', ''),
-            'so_luong': item['so_luong'],
-            'don_gia': item['don_gia'],
-            'thanh_tien': item['thanh_tien'],
-            'hinh_thuc_tt': hinh_thuc_tt,
-            'xuat_hd': xuat_hd,
-            'tien_tm': tien_tm,
-            'tien_ck': tien_ck,
-            'tien_no': tien_no
-        })
+        sl = float(item.get('so_luong', 0))
+        dg = float(item.get('don_gia', 0))
+        tt = float(item.get('thanh_tien', sl * dg))
+        nm = item.get('nha_may', '')
+        ma_vt = item.get('ma_vt', '')
+        ten_vt = item.get('ten_vt', '')
+        
+        cursor.execute('''
+            INSERT INTO don_hang (
+                so_don_hang, ngay_tao, chi_nhanh, ten_nv, ma_kh, ten_kh, ten_nguoi_mua, ma_so_thue, dia_chi,
+                ma_vt, ten_vt, so_luong, don_gia, thanh_tien, hinh_thuc_tt, xuat_hd, tien_tm, tien_ck, tien_no, nha_may
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            so_don, ngay_tao, chi_nhanh, ten_nv, ma_kh, final_ten_kh, final_ten_nguoi_mua, mst, dia_chi,
+            ma_vt, ten_vt, sl, dg, tt,
+            hinh_thuc_tt, xuat_hd, float(tien_tm), float(tien_ck), float(tien_no), nm
+        ))
 
-    df_new = pd.DataFrame(new_rows)
-    df_final = pd.concat([df_existing, df_new], ignore_index=True)
-    conn.update(worksheet="DonHang", data=df_final)
+        gsheet_rows.append([
+            so_don, ngay_tao, chi_nhanh, ten_nv, ma_kh, final_ten_kh, final_ten_nguoi_mua,
+            mst, dia_chi, ma_vt, ten_vt, nm, sl, dg, tt, hinh_thuc_tt, xuat_hd,
+            float(tien_tm), float(tien_ck), float(tien_no)
+        ])
+        
+    conn.commit()
+    conn.close()
+
+    # Đồng bộ lên Google Sheets sheet DonHang
+    append_to_gsheet("DonHang", gsheet_rows)
 
 def lay_bao_cao_ngay(ngay_str, chi_nhanh="Tất cả", ten_nv="Tất cả"):
-    conn = get_connection()
-    try:
-        df = conn.read(worksheet="DonHang", ttl=0)
-    except Exception:
-        return pd.DataFrame()
-
-    if df.empty or 'ngay_tao' not in df.columns:
-        return pd.DataFrame()
-
-    df['ngay_only'] = df['ngay_tao'].astype(str).str.slice(0, 10)
-    df_filtered = df[df['ngay_only'] == ngay_str]
+    conn = sqlite3.connect(DB_FILE)
+    query = "SELECT * FROM don_hang WHERE DATE(ngay_tao) = ?"
+    params = [ngay_str]
 
     if chi_nhanh != "Tất cả":
-        df_filtered = df_filtered[df_filtered['chi_nhanh'] == chi_nhanh]
+        query += " AND chi_nhanh = ?"
+        params.append(chi_nhanh)
+
     if ten_nv != "Tất cả":
-        df_filtered = df_filtered[df_filtered['ten_nv'] == ten_nv]
+        query += " AND ten_nv = ?"
+        params.append(ten_nv)
 
-    for col in ['so_luong', 'don_gia', 'thanh_tien', 'tien_tm', 'tien_ck', 'tien_no']:
-        if col in df_filtered.columns:
-            df_filtered[col] = pd.to_numeric(df_filtered[col], errors='coerce').fillna(0)
-
-    return df_filtered
+    df = pd.read_sql_query(query, conn, params=params)
+    conn.close()
+    return df
 
 def xoa_don_hang_by_so_don(so_don_hang):
-    conn = get_connection()
-    try:
-        df = conn.read(worksheet="DonHang", ttl=0)
-        if not df.empty and 'so_don_hang' in df.columns:
-            df_updated = df[df['so_don_hang'] != so_don_hang]
-            conn.update(worksheet="DonHang", data=df_updated)
-    except Exception as e:
-        st.error(f"Lỗi khi xóa đơn: {e}")
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM don_hang WHERE so_don_hang = ?", (so_don_hang,))
+    conn.commit()
+    conn.close()
 
-# ================= 3. CẬP NHẬT TAB TỪ ADMIN =================
-def update_sheet(worksheet_name, df_data):
-    conn = get_connection()
-    try:
-        conn.update(worksheet=worksheet_name, data=df_data)
-        st.toast(f"Đã cập nhật Google Sheet tab '{worksheet_name}'!", icon="✅")
-    except Exception as e:
-        st.error(f"Lỗi khi cập nhật tab {worksheet_name}: {e}")
+def cap_nhat_chi_tiet_don_hang(id_record, new_sl, new_dg):
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    new_tt = new_sl * new_dg
+    cursor.execute('''
+        UPDATE don_hang 
+        SET so_luong = ?, don_gia = ?, thanh_tien = ? 
+        WHERE id = ?
+    ''', (new_sl, new_dg, new_tt, id_record))
+    conn.commit()
+    conn.close()
 
-# ================= 4. XUẤT MISA EXCEL =================
 def xuat_excel_misa_chuan(ngay_str, chi_nhanh="Tất cả"):
-    df = lay_bao_cao_ngay(ngay_str, chi_nhanh)
+    df = lay_bao_cao_ngay(ngay_str, chi_nhanh, "Tất cả")
     if df.empty:
         return None
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "MISA_Export"
+
+    headers = [
+        "STT", "Số đơn hàng", "Ngày", "Chi nhánh", "Nhân viên", "Mã KH", 
+        "Tên khách hàng", "Tên người mua", "Mã số thuế", "Địa chỉ", 
+        "Mã VT", "Tên VT", "Số lượng", "Đơn giá", "Thành tiền", 
+        "Hình thức TT", "Xuất HD", "Tiền TM", "Tiền CK", "Tiền nợ", "Nhà máy"
+    ]
     
-    df_misa = pd.DataFrame({
-        'Số chứng từ': df['so_don_hang'],
-        'Ngày chứng từ': df['ngay_tao'],
-        'Mã khách hàng': df['ma_kh'],
-        'Tên khách hàng': df['ten_kh'],
-        'Mã số thuế': df['mst'],
-        'Địa chỉ': df['dia_chi'],
-        'Mã hàng': df['ma_vt'],
-        'Tên hàng': df['ten_vt'],
-        'Số lượng': df['so_luong'],
-        'Đơn giá': df['don_gia'],
-        'Thành tiền': df['thanh_tien'],
-        'Hình thức thanh toán': df['hinh_thuc_tt'],
-        'Xuất hóa đơn': df['xuat_hd']
-    })
+    ws.append(headers)
+
+    header_fill = PatternFill(start_color="1F4E79", end_color="1F4E79", fill_type="solid")
+    header_font = Font(name="Arial", size=10, bold=True, color="FFFFFF")
+    
+    for col_num in range(1, len(headers) + 1):
+        cell = ws.cell(row=1, column=col_num)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    num_cols_indices = [13, 14, 15, 18, 19, 20]
+
+    for idx, row in df.iterrows():
+        try:
+            ngay_fmt = datetime.strptime(str(row['ngay_tao']), '%Y-%m-%d %H:%M:%S').strftime('%d/%m/%Y')
+        except:
+            ngay_fmt = str(row['ngay_tao'])
+
+        sl_val = float(row.get('so_luong', 0))
+        dg_val = float(row.get('don_gia', 0))
+        tt_val = float(row.get('thanh_tien', 0))
+        tm_val = float(row.get('tien_tm', 0))
+        ck_val = float(row.get('tien_ck', 0))
+        no_val = float(row.get('tien_no', 0))
+
+        raw_ten_kh = str(row.get('ten_kh', '') or '').strip()
+        raw_ten_nguoi_mua = str(row.get('ten_nguoi_mua', '') or '').strip()
+
+        clean_ten_kh = "" if raw_ten_kh.lower() == "khách lẻ" else raw_ten_kh
+        clean_ten_nguoi_mua = "" if raw_ten_nguoi_mua.lower() == "khách lẻ" else raw_ten_nguoi_mua
+
+        raw_dia_chi = str(row.get('dia_chi', '') or '').strip()
+        clean_dia_chi = raw_dia_chi if raw_dia_chi else "Người mua không cung cấp địa chỉ"
+
+        row_data = [
+            idx + 1,
+            str(row.get('so_don_hang', '')),
+            ngay_fmt,
+            str(row.get('chi_nhanh', '')),
+            str(row.get('ten_nv', '')),
+            str(row.get('ma_kh', '')),
+            clean_ten_kh,        
+            clean_ten_nguoi_mua, 
+            str(row.get('ma_so_thue', '')),
+            clean_dia_chi,       
+            str(row.get('ma_vt', '')),
+            str(row.get('ten_vt', '')),
+            sl_val,
+            dg_val,
+            tt_val,
+            str(row.get('hinh_thuc_tt', '')),
+            str(row.get('xuat_hd', '')),
+            tm_val,
+            ck_val,
+            no_val,
+            str(row.get('nha_may', ''))
+        ]
+        
+        ws.append(row_data)
+        current_row = ws.max_row
+
+        for col_idx in range(1, len(headers) + 1):
+            cell = ws.cell(row=current_row, column=col_idx)
+            cell.font = Font(name="Arial", size=10)
+            
+            if col_idx in num_cols_indices:
+                cell.number_format = '#,##0'
+                cell.alignment = Alignment(horizontal="right", vertical="center")
+            else:
+                cell.alignment = Alignment(horizontal="left", vertical="center")
 
     output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df_misa.to_excel(writer, index=False, sheet_name='Import_MISA')
+    wb.save(output)
     return output.getvalue()
