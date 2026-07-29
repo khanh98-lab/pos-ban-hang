@@ -52,7 +52,7 @@ def parse_formatted_num(val_str):
     except Exception:
         return 0.0
 
-# TRA CỨU MÃ SỐ THUẾ
+# TRA CỨU MÃ SỐ THUẾ (TỐI ƯU 3 NGUỒN)
 def tra_cuu_mst_toi_uu(mst):
     mst = str(mst).strip().replace(" ", "").replace("-", "")
     if not mst:
@@ -62,6 +62,7 @@ def tra_cuu_mst_toi_uu(mst):
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
     }
 
+    # 1. Tra cứu qua VietQR API
     try:
         url_vietqr = f"https://api.vietqr.io/v2/business/{mst}"
         r_vqr = requests.get(url_vietqr, headers=headers, timeout=5)
@@ -72,13 +73,14 @@ def tra_cuu_mst_toi_uu(mst):
                 ten = data.get("name", "")
                 dia_chi = data.get("address", "")
                 if ten:
-                    return ten, dia_chi, "Thành công"
+                    return ten, dia_chi, "Thành công (VietQR)"
     except Exception:
         pass
 
+    # 2. Scrape từ Masothue.com
     try:
-        url_scrape = f"https://masothue.com/{mst}/"
-        res = requests.get(url_scrape, headers=headers, timeout=5)
+        url_mst = f"https://masothue.com/{mst}/"
+        res = requests.get(url_mst, headers=headers, timeout=5)
         if res.status_code == 200:
             soup = BeautifulSoup(res.text, 'html.parser')
             ten_cty = ""
@@ -99,11 +101,40 @@ def tra_cuu_mst_toi_uu(mst):
                             break
 
             if ten_cty:
-                return ten_cty, dia_chi, "Thành công"
+                return ten_cty, dia_chi, "Thành công (Masothue)"
     except Exception:
         pass
 
-    return None, None, "Không tìm thấy Mã số thuế này!"
+    # 3. Dự phòng: Scrape từ Thongtincongty.vn
+    try:
+        url_ttct = f"https://thongtincongty.vn/search/?q={mst}"
+        res_ttct = requests.get(url_ttct, headers=headers, timeout=5)
+        if res_ttct.status_code == 200:
+            soup_ttct = BeautifulSoup(res_ttct.text, 'html.parser')
+            
+            # Lấy tên công ty
+            ten_cty_ttct = ""
+            h1_tag = soup_ttct.find('h1') or soup_ttct.find('h3')
+            if h1_tag:
+                ten_cty_ttct = h1_tag.get_text(strip=True)
+
+            # Lấy địa chỉ
+            dia_chi_ttct = ""
+            for tr in soup_ttct.find_all(['tr', 'div', 'p']):
+                txt = tr.get_text()
+                if 'Địa chỉ' in txt:
+                    if ':' in txt:
+                        dia_chi_ttct = txt.split(':', 1)[1].strip()
+                    else:
+                        dia_chi_ttct = txt.replace('Địa chỉ', '').strip()
+                    break
+
+            if ten_cty_ttct and "không tìm thấy" not in ten_cty_ttct.lower():
+                return ten_cty_ttct, dia_chi_ttct, "Thành công (Thongtincongty)"
+    except Exception:
+        pass
+
+    return None, None, "Không tìm thấy Mã số thuế này trên cả 3 hệ thống!"
 
 # Bổ sung decorator lưu bộ nhớ đệm 10 phút (600 giây)
 @st.cache_data(ttl=600)
@@ -384,12 +415,12 @@ with tab_pos:
 
         if btn_tracuu:
             if mst_input:
-                with st.spinner("Đang tra cứu từ VietQR / Masothue..."):
+                with st.spinner("Đang tra cứu từ VietQR / Masothue / Thongtincongty..."):
                     ten_cq, dia_chi_cq, msg = tra_cuu_mst_toi_uu(mst_input)
                     if ten_cq:
                         st.session_state["txt_ten_kh_moi"] = ten_cq
                         st.session_state["txt_dia_chi_moi"] = dia_chi_cq
-                        st.success("Tra cứu thành công!")
+                        st.success(f"Tra cứu thành công! ({msg})")
                         st.rerun()
                     else:
                         st.error(msg)
