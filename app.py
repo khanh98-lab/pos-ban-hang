@@ -863,6 +863,8 @@ with tab_baocao:
                 data_helper.cap_nhat_chi_tiet_don_hang(selected_don, df_to_save)
                 st.success(f"Đã cập nhật lại đơn hàng {selected_don} thành công!")
                 st.rerun()
+            elif not selected_don:
+                st.info("💡 **Mẹo Admin**: Để sửa chính xác số lượng/đơn giá cho đơn hàng cụ thể, hãy chọn nút **👁️ Xem** đơn hàng tương ứng ở danh sách bên trên trước khi lưu.")
 
     else:
         st.warning("Chưa có đơn hàng nào phát sinh trong ngày được chọn!")
